@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>验证码提取器 - 买家专用</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+    <style>
+        :root {
+            --accent: #34d399;
+            --alert: #fb923c;
+            --panel-border: rgba(63, 63, 70, 0.7);
+        }
+        body {
+            font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+            background:
+                radial-gradient(circle at 12% 10%, rgba(16, 185, 129, 0.18), transparent 30%),
+                radial-gradient(circle at 88% 0%, rgba(251, 146, 60, 0.16), transparent 25%),
+                linear-gradient(160deg, #020617 0%, #09090b 45%, #111827 100%);
+        }
+        .panel {
+            background: linear-gradient(180deg, rgba(24, 24, 27, 0.88), rgba(9, 9, 11, 0.95));
+            border: 1px solid var(--panel-border);
+            box-shadow: 0 18px 36px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(6px);
+        }
+        .brand-glow {
+            text-shadow: 0 0 20px rgba(16, 185, 129, 0.35);
+        }
+        .code-box {
+            font-family: 'Courier New', monospace;
+            letter-spacing: 4px;
+        }
+        .refreshing { animation: spin 1s linear infinite; }
+        .qq-alert {
+            background: linear-gradient(90deg, rgba(250, 204, 21, 0.14), rgba(249, 115, 22, 0.22), rgba(239, 68, 68, 0.16));
+            border: 1px solid rgba(251, 146, 60, 0.75);
+            box-shadow: 0 0 0 1px rgba(251, 146, 60, 0.2) inset, 0 12px 28px rgba(249, 115, 22, 0.25);
+            animation: pulseAlert 1.8s ease-in-out infinite;
+        }
+        .qq-alert-text {
+            font-weight: 800;
+            color: #fef3c7;
+            text-shadow: 0 0 10px rgba(251, 146, 60, 0.45);
+            letter-spacing: 0.4px;
+        }
+        .primary-btn {
+            box-shadow: 0 10px 24px rgba(16, 185, 129, 0.28);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .primary-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 14px 30px rgba(16, 185, 129, 0.35);
+        }
+        @keyframes pulseAlert {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.01); }
+        }
+    </style>
+</head>
+<body class="text-zinc-100 min-h-screen">
+    <div class="max-w-3xl mx-auto p-6">
+        <!-- 头部 -->
+        <div class="flex items-center justify-between mb-8">
+            <div>
+                <h1 class="text-3xl font-bold flex items-center gap-3 brand-glow">
+                    <i class="fa-solid fa-envelope text-emerald-500"></i>
+                    验证码提取器
+                </h1>
+                <p class="text-zinc-400 mt-1">买家专用 · 一键获取最新邮件验证码</p>
+            </div>
+            <div class="text-xs text-zinc-500 text-right">
+                Powered by email2.ymb1668.com<br>
+                <span class="text-emerald-500">v2 公开接口</span>
+            </div>
+        </div>
+
+        <!-- 售后提醒 -->
+        <div class="qq-alert rounded-2xl p-5 mb-6">
+            <div class="flex items-center gap-2 text-amber-200 font-bold mb-3">
+                <i class="fa-solid fa-headset text-orange-300"></i>
+                售后客服提醒（重要）
+            </div>
+            <div class="space-y-2">
+                <p class="qq-alert-text text-base md:text-lg">售后QQ：786769472，有问题添加QQ联系客服</p>
+                <p class="qq-alert-text text-base md:text-lg">售后QQ：786769472，有问题添加QQ联系客服</p>
+                <p class="qq-alert-text text-base md:text-lg">售后QQ：786769472，有问题添加QQ联系客服</p>
+            </div>
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="panel rounded-2xl p-6 mb-6">
+            <div class="grid grid-cols-1 gap-4">
+                <div>
+                    <label class="block text-sm text-zinc-400 mb-1">邮箱地址</label>
+                    <input id="email" type="email" placeholder="yourname@domain.com" 
+                           class="w-full bg-zinc-950/90 border border-zinc-700 focus:border-emerald-500 rounded-xl px-4 py-3 outline-none text-lg shadow-inner shadow-black/30">
+                </div>
+                
+                <div>
+                    <label class="block text-sm text-zinc-400 mb-1 flex items-center gap-2">
+                        用户密钥 <span class="text-xs text-zinc-500">(可选)</span>
+                    </label>
+                    <input id="userKey" type="text" placeholder="sk-xxx... (可选)" 
+                           class="w-full bg-zinc-950/90 border border-zinc-700 focus:border-emerald-500 rounded-xl px-4 py-3 outline-none shadow-inner shadow-black/30">
+                </div>
+            </div>
+
+            <div class="flex gap-3 mt-6">
+                <button onclick="fetchLatestCode()" 
+                        class="primary-btn flex-1 bg-emerald-600 hover:bg-emerald-500 transition py-4 rounded-2xl font-semibold text-lg flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-bolt"></i>
+                    获取最新验证码
+                </button>
+                
+                <button onclick="toggleAutoRefresh()" id="autoBtn"
+                        class="px-6 bg-zinc-800 hover:bg-zinc-700 transition rounded-2xl flex items-center gap-2 border border-zinc-700">
+                    <i id="autoIcon" class="fa-solid fa-clock"></i>
+                    <span id="autoText">自动刷新</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 结果区域 -->
+        <div id="result" class="hidden">
+            <div class="panel rounded-2xl p-6">
+                <!-- 验证码大框 -->
+                <div class="text-center mb-6">
+                    <div class="text-xs text-emerald-400 mb-2 font-medium">验证码</div>
+                    <div id="codeDisplay" 
+                         class="code-box bg-zinc-950/95 border border-emerald-900 text-emerald-400 text-6xl font-bold tracking-[8px] py-6 rounded-2xl select-all shadow-lg shadow-black/40">
+                        000000
+                    </div>
+                    <button onclick="copyCode()" 
+                            class="mt-3 px-8 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm flex items-center gap-2 mx-auto border border-zinc-700">
+                        <i class="fa-solid fa-copy"></i> 复制验证码
+                    </button>
+                </div>
+
+                <!-- 邮件信息 -->
+                <div class="grid grid-cols-2 gap-4 text-sm mb-6">
+                    <div>
+                        <span class="text-zinc-500">发件人：</span>
+                        <span id="sender" class="text-zinc-300"></span>
+                    </div>
+                    <div>
+                        <span class="text-zinc-500">接收时间：</span>
+                        <span id="time" class="text-zinc-300"></span>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="text-xs text-zinc-500 mb-1">邮件主题</div>
+                    <div id="subject" class="bg-zinc-950 p-4 rounded-xl text-zinc-300 break-words"></div>
+                </div>
+
+                <!-- 正文 -->
+                <div>
+                    <div class="flex gap-3 border-b border-zinc-800 mb-3">
+                        <button onclick="showTab(0)" id="tab0"
+                                class="tab-btn active px-4 py-2 text-sm border-b-2 border-emerald-500 text-emerald-400">纯文本</button>
+                        <button onclick="showTab(1)" id="tab1"
+                                class="tab-btn px-4 py-2 text-sm text-zinc-400">HTML预览</button>
+                    </div>
+                    <div id="textBody" class="bg-zinc-950 p-5 rounded-xl text-sm text-zinc-300 whitespace-pre-wrap max-h-96 overflow-auto font-mono"></div>
+                    <div id="htmlBody" class="hidden bg-zinc-950 p-5 rounded-xl max-h-96 overflow-auto"></div>
+                </div>
+            </div>
+
+            <!-- 状态栏 -->
+            <div class="flex justify-between text-xs text-zinc-500 mt-4 px-2">
+                <div id="status">已获取最新邮件</div>
+                <div class="flex items-center gap-2">
+                    <span id="refreshTime"></span>
+                    <button onclick="fetchLatestCode()" class="hover:text-emerald-400">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 无邮件提示 -->
+        <div id="noEmail" class="hidden panel rounded-2xl p-12 text-center border-dashed border-zinc-700">
+            <i class="fa-solid fa-inbox text-5xl text-zinc-600 mb-4"></i>
+            <p class="text-zinc-400">暂无新邮件</p>
+            <p class="text-xs text-zinc-500 mt-1">请稍等几秒或检查邮箱地址是否正确</p>
+        </div>
+
+        <!-- 错误提示 -->
+        <div id="error" class="hidden bg-red-950/85 border border-red-900 rounded-2xl p-6 text-red-300 text-sm shadow-lg shadow-red-950/30"></div>
+    </div>
+
+    <script>
+        // ==================== 配置 ====================
+        const BASE_URL = "http://email2.ymb1668.com";
+        let autoRefreshInterval = null;
+        let isAuto = false;
+        let currentEmail = "";
+
+        // ==================== 验证码提取算法 ====================
+        function extractCode(text, html) {
+            const content = (text || html || "").toLowerCase();
+            
+            // 优先匹配常见关键词 + 验证码
+            const patterns = [
+                /验证码[：: ]*(\d{4,8})/i,
+                /code[：: ]*(\d{4,8})/i,
+                /otp[：: ]*(\d{4,8})/i,
+                /verification code[：: ]*(\d{4,8})/i,
+                /您的验证码是[：: ]*(\d{4,8})/i,
+                /auth code[：: ]*(\d{4,8})/i
+            ];
+            
+            for (let regex of patterns) {
+                const match = content.match(regex);
+                if (match && match[1]) return match[1];
+            }
+            
+            // 兜底：查找所有 4~8 位纯数字，取最长的
+            const digits = content.match(/\b\d{4,8}\b/g) || [];
+            if (digits.length) {
+                return digits.sort((a,b) => b.length - a.length)[0];
+            }
+            return null;
+        }
+
+        // ==================== 主函数 ====================
+        async function fetchLatestCode() {
+            const emailInput = document.getElementById("email").value.trim();
+            const userKey = document.getElementById("userKey").value.trim();
+            
+            if (!emailInput) {
+                showError("请输入邮箱地址！");
+                return;
+            }
+            
+            currentEmail = emailInput;
+            showLoading();
+
+            const url = new URL(`${BASE_URL}/api/v2/public/mailbox/latest`);
+            url.searchParams.set("address", emailInput);
+            if (userKey) url.searchParams.set("user_key", userKey);
+
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (!data.success || !data.email) {
+                    showNoEmail();
+                    return;
+                }
+
+                const email = data.email;
+                renderEmail(email);
+                
+            } catch (err) {
+                showError("网络请求失败，请检查网络或稍后重试");
+                console.error(err);
+            }
+        }
+
+        function renderEmail(email) {
+            document.getElementById("result").classList.remove("hidden");
+            document.getElementById("noEmail").classList.add("hidden");
+            document.getElementById("error").classList.add("hidden");
+
+            // 基础信息
+            document.getElementById("sender").textContent = email.sender || "未知";
+            document.getElementById("time").textContent = formatTime(email.received_at || email.date);
+            document.getElementById("subject").textContent = email.subject || "无主题";
+
+            const textBody = email.text_body || email.text || "";
+            const htmlBody = email.html_body || email.html || "";
+
+            // 显示正文
+            document.getElementById("textBody").textContent = textBody || "无纯文本内容";
+            const htmlContainer = document.getElementById("htmlBody");
+            htmlContainer.innerHTML = htmlBody ? htmlBody : "<p class='text-zinc-500'>无 HTML 内容</p>";
+            
+            showTab(0); // 默认显示文本
+
+            // 提取验证码
+            const code = extractCode(textBody, htmlBody);
+            if (code) {
+                document.getElementById("codeDisplay").textContent = code;
+                document.getElementById("codeDisplay").classList.add("text-emerald-400");
+            } else {
+                document.getElementById("codeDisplay").textContent = "未检测到验证码";
+                document.getElementById("codeDisplay").classList.remove("text-emerald-400");
+            }
+
+            document.getElementById("status").innerHTML = `
+                <span class="text-emerald-400">✓</span> 已获取 ${new Date().toLocaleTimeString('zh-CN')}
+            `;
+        }
+
+        function formatTime(timeStr) {
+            if (!timeStr) return "刚刚";
+            const date = new Date(timeStr);
+            return date.toLocaleString('zh-CN', { hour12: false });
+        }
+
+        function showTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach((b, i) => {
+                b.classList.toggle('active', i === tab);
+                b.classList.toggle('border-emerald-500', i === tab);
+                b.classList.toggle('text-emerald-400', i === tab);
+            });
+            document.getElementById("textBody").classList.toggle("hidden", tab !== 0);
+            document.getElementById("htmlBody").classList.toggle("hidden", tab !== 1);
+        }
+
+        function copyCode() {
+            const code = document.getElementById("codeDisplay").textContent;
+            if (code.length < 4 || code === "未检测到验证码") return;
+            
+            navigator.clipboard.writeText(code).then(() => {
+                const orig = document.getElementById("codeDisplay").style.backgroundColor;
+                document.getElementById("codeDisplay").style.backgroundColor = "#10b981";
+                setTimeout(() => {
+                    document.getElementById("codeDisplay").style.backgroundColor = orig;
+                }, 300);
+            });
+        }
+
+        function toggleAutoRefresh() {
+            isAuto = !isAuto;
+            const btn = document.getElementById("autoBtn");
+            const icon = document.getElementById("autoIcon");
+            const text = document.getElementById("autoText");
+            
+            if (isAuto) {
+                btn.classList.add("bg-emerald-900", "text-emerald-300");
+                icon.classList.add("refreshing");
+                text.textContent = "正在自动刷新";
+                autoRefreshInterval = setInterval(() => {
+                    if (currentEmail) fetchLatestCode();
+                }, 5000); // 每5秒自动刷新
+            } else {
+                btn.classList.remove("bg-emerald-900", "text-emerald-300");
+                icon.classList.remove("refreshing");
+                text.textContent = "自动刷新";
+                clearInterval(autoRefreshInterval);
+            }
+        }
+
+        function showLoading() {
+            document.getElementById("result").classList.add("hidden");
+            document.getElementById("noEmail").classList.add("hidden");
+            document.getElementById("error").classList.add("hidden");
+        }
+
+        function showNoEmail() {
+            document.getElementById("result").classList.add("hidden");
+            document.getElementById("noEmail").classList.remove("hidden");
+            document.getElementById("error").classList.add("hidden");
+        }
+
+        function showError(msg) {
+            const errDiv = document.getElementById("error");
+            errDiv.textContent = msg;
+            errDiv.classList.remove("hidden");
+            document.getElementById("result").classList.add("hidden");
+            document.getElementById("noEmail").classList.add("hidden");
+        }
+
+        // Enter 键触发
+        document.getElementById("email").addEventListener("keypress", e => {
+            if (e.key === "Enter") fetchLatestCode();
+        });
+
+        // 初始化 Tailwind
+        tailwind.config = {
+            content: [],
+            theme: { extend: {} }
+        };
+    </script>
+</body>
+</html>
