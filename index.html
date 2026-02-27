@@ -6,38 +6,134 @@
     <title>验证码提取器 - 买家专用</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&display=swap">
     <style>
         :root {
             --accent: #34d399;
             --alert: #fb923c;
-            --panel-border: rgba(63, 63, 70, 0.7);
+            --panel-border: rgba(45, 212, 191, 0.28);
+            --ice: #dbeafe;
         }
+        * { box-sizing: border-box; }
         body {
-            font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+            font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
             background:
-                radial-gradient(circle at 12% 10%, rgba(16, 185, 129, 0.18), transparent 30%),
-                radial-gradient(circle at 88% 0%, rgba(251, 146, 60, 0.16), transparent 25%),
-                linear-gradient(160deg, #020617 0%, #09090b 45%, #111827 100%);
+                radial-gradient(circle at 18% 12%, rgba(56, 189, 248, 0.16), transparent 26%),
+                radial-gradient(circle at 90% 0%, rgba(14, 165, 233, 0.14), transparent 24%),
+                linear-gradient(145deg, #01040d 0%, #050817 35%, #020617 70%, #010611 100%);
+            color: #f8fafc;
+            overflow-x: hidden;
+            position: relative;
+            min-height: 100vh;
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 2;
+            background:
+                linear-gradient(rgba(14, 116, 144, 0.12) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(14, 116, 144, 0.12) 1px, transparent 1px);
+            background-size: 52px 52px;
+            opacity: 0.32;
+            animation: gridDrift 24s linear infinite;
+        }
+        body::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 6;
+            background: repeating-linear-gradient(
+                to bottom,
+                rgba(148, 163, 184, 0.035) 0,
+                rgba(148, 163, 184, 0.035) 1px,
+                transparent 1px,
+                transparent 4px
+            );
+            mix-blend-mode: screen;
+            animation: scanlineShift 8s linear infinite;
+        }
+        #snowCanvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            pointer-events: none;
+        }
+        .aurora {
+            position: fixed;
+            inset: -20% -10% auto -10%;
+            height: 70vh;
+            z-index: 1;
+            pointer-events: none;
+            background:
+                radial-gradient(circle at 20% 30%, rgba(56, 189, 248, 0.14), transparent 35%),
+                radial-gradient(circle at 75% 20%, rgba(45, 212, 191, 0.12), transparent 40%),
+                radial-gradient(circle at 50% 70%, rgba(99, 102, 241, 0.10), transparent 42%);
+            filter: blur(24px);
+            animation: auroraFloat 12s ease-in-out infinite;
+        }
+        .app-shell {
+            position: relative;
+            z-index: 8;
         }
         .panel {
-            background: linear-gradient(180deg, rgba(24, 24, 27, 0.88), rgba(9, 9, 11, 0.95));
+            background:
+                linear-gradient(180deg, rgba(12, 20, 36, 0.90), rgba(8, 13, 24, 0.95)),
+                linear-gradient(115deg, rgba(56, 189, 248, 0.06), transparent 45%);
             border: 1px solid var(--panel-border);
-            box-shadow: 0 18px 36px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(6px);
+            box-shadow:
+                0 18px 36px rgba(0, 0, 0, 0.45),
+                0 0 0 1px rgba(56, 189, 248, 0.06) inset,
+                0 0 28px rgba(14, 165, 233, 0.12);
+            backdrop-filter: blur(8px);
+            transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+        }
+        .panel:hover {
+            border-color: rgba(56, 189, 248, 0.48);
+            box-shadow:
+                0 22px 40px rgba(0, 0, 0, 0.52),
+                0 0 0 1px rgba(56, 189, 248, 0.12) inset,
+                0 0 35px rgba(14, 165, 233, 0.18);
+            transform: translateY(-1px);
         }
         .brand-glow {
-            text-shadow: 0 0 20px rgba(16, 185, 129, 0.35);
+            font-family: "Orbitron", "Segoe UI", sans-serif;
+            letter-spacing: 0.8px;
+            text-shadow: 0 0 18px rgba(56, 189, 248, 0.42);
         }
         .code-box {
             font-family: 'Courier New', monospace;
             letter-spacing: 4px;
         }
+        input[type="email"], input[type="text"] {
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        input[type="email"]:focus, input[type="text"]:focus {
+            box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.45), 0 0 16px rgba(56, 189, 248, 0.15);
+        }
         .refreshing { animation: spin 1s linear infinite; }
         .qq-alert {
-            background: linear-gradient(90deg, rgba(250, 204, 21, 0.14), rgba(249, 115, 22, 0.22), rgba(239, 68, 68, 0.16));
-            border: 1px solid rgba(251, 146, 60, 0.75);
-            box-shadow: 0 0 0 1px rgba(251, 146, 60, 0.2) inset, 0 12px 28px rgba(249, 115, 22, 0.25);
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(90deg, rgba(251, 191, 36, 0.12), rgba(249, 115, 22, 0.20), rgba(239, 68, 68, 0.14));
+            border: 1px solid rgba(251, 146, 60, 0.78);
+            box-shadow: 0 0 0 1px rgba(251, 146, 60, 0.2) inset, 0 14px 30px rgba(249, 115, 22, 0.22);
             animation: pulseAlert 1.8s ease-in-out infinite;
+        }
+        .qq-alert::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -45%;
+            width: 35%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.20), transparent);
+            transform: skewX(-16deg);
+            animation: warnSweep 3s linear infinite;
         }
         .qq-alert-text {
             font-weight: 800;
@@ -46,9 +142,23 @@
             letter-spacing: 0.4px;
         }
         .primary-btn {
+            position: relative;
+            overflow: hidden;
             box-shadow: 0 10px 24px rgba(16, 185, 129, 0.28);
             transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
+        .primary-btn::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -38%;
+            width: 30%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+            transform: skewX(-18deg);
+            transition: left 0.45s ease;
+        }
+        .primary-btn:hover::after { left: 120%; }
         .primary-btn:hover {
             transform: translateY(-1px);
             box-shadow: 0 14px 30px rgba(16, 185, 129, 0.35);
@@ -57,12 +167,34 @@
             0%, 100% { transform: scale(1); }
             50% { transform: scale(1.01); }
         }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes gridDrift {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(52px); }
+        }
+        @keyframes scanlineShift {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(8px); }
+        }
+        @keyframes auroraFloat {
+            0%, 100% { transform: translateX(0) translateY(0); opacity: 0.9; }
+            50% { transform: translateX(2%) translateY(2%); opacity: 1; }
+        }
+        @keyframes warnSweep {
+            0% { left: -45%; }
+            100% { left: 130%; }
+        }
     </style>
 </head>
 <body class="text-zinc-100 min-h-screen">
-    <div class="max-w-3xl mx-auto p-6">
+    <div class="aurora" aria-hidden="true"></div>
+    <canvas id="snowCanvas" aria-hidden="true"></canvas>
+    <div class="app-shell max-w-3xl mx-auto p-4 md:p-6">
         <!-- 头部 -->
-        <div class="flex items-center justify-between mb-8">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
             <div>
                 <h1 class="text-3xl font-bold flex items-center gap-3 brand-glow">
                     <i class="fa-solid fa-envelope text-emerald-500"></i>
@@ -71,6 +203,10 @@
                 <p class="text-zinc-400 mt-1">买家专用 · 一键获取最新邮件验证码</p>
             </div>
             <div class="text-xs text-zinc-500 text-right">
+                <div class="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 mb-1">
+                    <i class="fa-solid fa-circle text-[8px] text-cyan-300"></i>
+                    SYSTEM ONLINE
+                </div><br>
                 Powered by email2.ymb1668.com<br>
                 <span class="text-emerald-500">v2 公开接口</span>
             </div>
@@ -107,7 +243,7 @@
                 </div>
             </div>
 
-            <div class="flex gap-3 mt-6">
+            <div class="flex flex-col sm:flex-row gap-3 mt-6">
                 <button onclick="fetchLatestCode()" 
                         class="primary-btn flex-1 bg-emerald-600 hover:bg-emerald-500 transition py-4 rounded-2xl font-semibold text-lg flex items-center justify-center gap-2">
                     <i class="fa-solid fa-bolt"></i>
@@ -129,7 +265,7 @@
                 <div class="text-center mb-6">
                     <div class="text-xs text-emerald-400 mb-2 font-medium">验证码</div>
                     <div id="codeDisplay" 
-                         class="code-box bg-zinc-950/95 border border-emerald-900 text-emerald-400 text-6xl font-bold tracking-[8px] py-6 rounded-2xl select-all shadow-lg shadow-black/40">
+                         class="code-box bg-zinc-950/95 border border-emerald-900 text-emerald-400 text-4xl md:text-6xl font-bold tracking-[8px] py-6 rounded-2xl select-all shadow-lg shadow-black/40">
                         000000
                     </div>
                     <button onclick="copyCode()" 
@@ -193,7 +329,7 @@
 
     <script>
         // ==================== 配置 ====================
-        const BASE_URL = "https://email2.ymb1668.com";
+        const BASE_URL = "http://email2.ymb1668.com";
         let autoRefreshInterval = null;
         let isAuto = false;
         let currentEmail = "";
@@ -365,6 +501,81 @@
             document.getElementById("noEmail").classList.add("hidden");
         }
 
+        function initSnow() {
+            const canvas = document.getElementById("snowCanvas");
+            if (!canvas) return;
+
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return;
+
+            const flakes = [];
+            const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+            const totalFlakes = reduceMotion ? 45 : 140;
+            let width = 0;
+            let height = 0;
+            let rafId = null;
+
+            function makeFlake(seedTop = false) {
+                const radius = Math.random() * 2.4 + 0.6;
+                return {
+                    x: Math.random() * width,
+                    y: seedTop ? Math.random() * height : -12,
+                    r: radius,
+                    vy: 0.45 + Math.random() * 1.35 + radius * 0.08,
+                    vx: (Math.random() - 0.5) * 0.35,
+                    sway: Math.random() * Math.PI * 2,
+                    alpha: 0.35 + Math.random() * 0.55
+                };
+            }
+
+            function setupCanvas() {
+                width = window.innerWidth;
+                height = window.innerHeight;
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+                canvas.width = Math.floor(width * dpr);
+                canvas.height = Math.floor(height * dpr);
+                canvas.style.width = `${width}px`;
+                canvas.style.height = `${height}px`;
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+                if (flakes.length === 0) {
+                    for (let i = 0; i < totalFlakes; i++) {
+                        flakes.push(makeFlake(true));
+                    }
+                }
+            }
+
+            function renderSnow() {
+                ctx.clearRect(0, 0, width, height);
+
+                for (let i = 0; i < flakes.length; i++) {
+                    const f = flakes[i];
+                    f.y += f.vy;
+                    f.sway += 0.012 + f.r * 0.002;
+                    f.x += f.vx + Math.sin(f.sway) * 0.24;
+
+                    if (f.y > height + 14 || f.x < -22 || f.x > width + 22) {
+                        flakes[i] = makeFlake(false);
+                        flakes[i].x = Math.random() * width;
+                        continue;
+                    }
+
+                    ctx.beginPath();
+                    ctx.fillStyle = `rgba(226, 240, 255, ${f.alpha})`;
+                    ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                rafId = window.requestAnimationFrame(renderSnow);
+            }
+
+            setupCanvas();
+            if (rafId) cancelAnimationFrame(rafId);
+            renderSnow();
+            window.addEventListener("resize", setupCanvas);
+        }
+
         // Enter 键触发
         document.getElementById("email").addEventListener("keypress", e => {
             if (e.key === "Enter") fetchLatestCode();
@@ -375,7 +586,8 @@
             content: [],
             theme: { extend: {} }
         };
+
+        initSnow();
     </script>
 </body>
-
 </html>
