@@ -334,30 +334,227 @@
         let isAuto = false;
         let currentEmail = "";
 
-        // ==================== 验证码提取算法 ====================
-        function extractCode(text, html) {
-            const content = (text || html || "").toLowerCase();
-            
-            // 优先匹配常见关键词 + 验证码
-            const patterns = [
-                /验证码[：: ]*(\d{4,8})/i,
-                /code[：: ]*(\d{4,8})/i,
-                /otp[：: ]*(\d{4,8})/i,
-                /verification code[：: ]*(\d{4,8})/i,
-                /您的验证码是[：: ]*(\d{4,8})/i,
-                /auth code[：: ]*(\d{4,8})/i
+        // ==================== 验证码提取算法（修正版：避免抓到 LoginCode） ====================
+        const CODE_MIN_LEN = 4;
+        const CODE_MAX_LEN = 10;
+
+        // 明确排除的“常见标题/品牌词”，防止被当验证码
+        const STOP_TOKENS = [
+            /^logincode$/i,
+            /^login$/i,
+            /^code$/i,
+            /^log-?in$/i,
+            /^chatgpt$/i,
+            /^openai$/i,
+            /^password$/i,
+            /^verify$/i,
+            /^verification$/i,
+            /^security$/i
+        ];
+
+        // 像业务ID的上下文词（附近出现就降权）
+        const BAD_NEARBY_WORDS = [
+            /order/i, /invoice/i, /tracking/i, /ticket/i, /reference/i, /\bid\b/i,
+            /account/i, /customer/i, /support/i, /case/i
+        ];
+
+        function stripHtmlToText(html) {
+            if (!html) return "";
+            try {
+            const doc = new DOMParser().parseFromString(html, "text/html");
+            return (doc.body && doc.body.innerText) ? doc.body.innerText : (doc.documentElement.textContent || "");
+            } catch {
+            return String(html)
+                .replace(/<script[\s\S]*?<\/script>/gi, "")
+                .replace(/<style[\s\S]*?<\/style>/gi, "")
+                .replace(/<[^>]+>/g, " ");
+            }
+        }
+
+        function normalizeText(s) {
+            return String(s || "")
+            .replace(/\r/g, "\n")
+            .replace(/\t/g, " ")
+            .replace(/[ \u00A0]+/g, " ")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
+        }
+
+        function normalizeToken(tok) {
+            return String(tok).replace(/[ \-]/g, "").trim();
+        }
+
+        function isStopToken(token) {
+            return STOP_TOKENS.some(r => r.test(token));
+        }
+
+        // 只允许字母数字；并做更合理的“像验证码”判断
+        function looksLikeCode(token, strictLettersOnly = false) {
+            const t = normalizeToken(token);
+            if (t.length < CODE_MIN_LEN || t.length > CODE_MAX_LEN) return false;
+            if (!/^[A-Za-z0-9]+$/.test(t)) return false;
+            if (isStopToken(t)) return false;
+
+            const hasDigit = /\d/.test(t);
+            const hasLetter = /[A-Za-z]/.test(t);
+
+            // 常见：纯数字 / 字母数字混合
+            if (hasDigit) return true;
+
+            // 纯字母验证码：仅在严格模式下允许（必须“code: XXXX”那种结构）
+            if (!hasDigit && hasLetter) return strictLettersOnly;
+
+            return false;
+        }
+
+        function collectCandidates(text) {
+            const candidates = [];
+
+            // 连续 token（AB12CD / 123456 / ABCD）
+            const reCompact = new RegExp(`(?<![A-Za-z0-9])([A-Za-z0-9]{${CODE_MIN_LEN},${CODE_MAX_LEN}})(?![A-Za-z0-9])`, "g");
+            for (const m of text.matchAll(reCompact)) candidates.push({ raw: m[1], index: m.index });
+
+            // 分隔 token（A B 1 2 C D / AB-12-CD）
+            const reSeparated = /(?<![A-Za-z0-9])([A-Za-z0-9](?:[ \-]?[A-Za-z0-9]){3,15})(?![A-Za-z0-9])/g;
+            for (const m of text.matchAll(reSeparated)) {
+            const raw = m[1];
+            const norm = normalizeToken(raw);
+            if (norm.length >= CODE_MIN_LEN && norm.length <= CODE_MAX_LEN) {
+                candidates.push({ raw, index: m.index });
+            }
+            }
+
+            return candidates;
+        }
+
+        function scoreCandidate(text, candRaw, candIndex, keywordIndex, strictLettersOnly) {
+            const norm = normalizeToken(candRaw);
+            if (!looksLikeCode(norm, strictLettersOnly)) return -9999;
+
+            let score = 0;
+            const hasDigit = /\d/.test(norm);
+
+            // ✅ 强偏好：含数字的验证码
+            if (hasDigit) score += 80;
+            else score += 30; // 纯字母（严格模式）也允许，但分更低
+
+            // 离关键词越近越好
+            if (keywordIndex != null) {
+            const dist = Math.abs(candIndex - keywordIndex);
+            score += Math.max(0, 40 - Math.floor(dist / 6));
+            }
+
+            // 单独一行加分
+            const left = Math.max(0, candIndex - 40);
+            const right = Math.min(text.length, candIndex + candRaw.length + 40);
+            const window = text.slice(left, right);
+            if (/(^|\n)\s*[A-Za-z0-9 \-]{4,}\s*(\n|$)/.test(window)) score += 15;
+
+            // 像业务ID的上下文降权
+            const ctxL = Math.max(0, candIndex - 60);
+            const ctxR = Math.min(text.length, candIndex + candRaw.length + 60);
+            const ctx = text.slice(ctxL, ctxR);
+            if (BAD_NEARBY_WORDS.some(r => r.test(ctx))) score -= 30;
+
+            // 超长纯数字更像订单号（轻微降权）
+            if (/^\d+$/.test(norm) && norm.length >= 9) score -= 10;
+
+            return score;
+        }
+
+        function extractFromOneText(raw) {
+            const text = normalizeText(raw);
+            if (!text) return null;
+
+            // 关键词（中英）
+            const keywordPatterns = [
+            /enter this code/i,
+            /your .* code is/i,
+            /\bverification code\b/i,
+            /\bauth(?:entication)? code\b/i,
+            /\bone[- ]time password\b/i,
+            /\botp\b/i,
+            /验证码/i,
+            /动态码/i,
+            /校验码/i,
+            /安全码/i
             ];
-            
-            for (let regex of patterns) {
-                const match = content.match(regex);
-                if (match && match[1]) return match[1];
+
+            let kwIndex = null;
+            for (const kw of keywordPatterns) {
+            const m = kw.exec(text);
+            if (m) { kwIndex = m.index; break; }
             }
-            
-            // 兜底：查找所有 4~8 位纯数字，取最长的
-            const digits = content.match(/\b\d{4,8}\b/g) || [];
-            if (digits.length) {
-                return digits.sort((a,b) => b.length - a.length)[0];
+
+            // 1) ✅ 关键词窗口内：优先直接抓“数字验证码”（最稳，直接解决你图里问题）
+            if (kwIndex != null) {
+            const win = text.slice(kwIndex, Math.min(text.length, kwIndex + 360));
+
+            // 先抓 4~10 位纯数字（或你可调）
+            const num = win.match(/(?<!\d)\d{4,10}(?!\d)/);
+            if (num) return num[0];
+
+            // 再抓“含数字”的字母数字混合
+            const mix = win.match(/(?<![A-Za-z0-9])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{4,10}(?![A-Za-z0-9])/);
+            if (mix && !isStopToken(mix[0])) return mix[0];
             }
+
+            // 2) ✅ “结构化行”抓取：Code: XXXX / 验证码：XXXX / OTP: XXXX（这里允许纯字母）
+            const structured = text.match(/(?:code|验证码|otp|password)\s*[:：]\s*([A-Za-z0-9 \-]{4,20})/i);
+            if (structured) {
+            const cand = normalizeToken(structured[1]);
+            // 结构化场景：允许纯字母
+            if (looksLikeCode(cand, true)) return cand;
+            }
+
+            // 3) 单独一行优先（不允许纯字母，避免 LoginCode）
+            const lines = text.split("\n");
+            for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            if (trimmed.length > 40) continue;
+
+            const only = trimmed.match(/^([A-Za-z0-9 \-]{4,20})$/);
+            if (!only) continue;
+
+            const cand = normalizeToken(only[1]);
+            if (looksLikeCode(cand, false) && /\d/.test(cand)) return cand;
+            }
+
+            // 4) 全局候选打分兜底（纯字母默认不参与，除非结构化触发）
+            const candidates = collectCandidates(text);
+            let best = null, bestScore = -1;
+
+            for (const c of candidates) {
+            const s = scoreCandidate(text, c.raw, c.index, kwIndex, false);
+            if (s > bestScore) {
+                bestScore = s;
+                best = normalizeToken(c.raw);
+            }
+            }
+
+            return best;
+        }
+
+        function extractCode(text, html) {
+            const fromText = extractFromOneText(text || "");
+            if (fromText) return fromText;
+
+            const visibleHtmlText = stripHtmlToText(html || "");
+            const fromHtml = extractFromOneText(visibleHtmlText);
+            if (fromHtml) return fromHtml;
+
+            return null;
+        }
+
+        function extractCode(text, html) {
+            const fromText = extractFromOneText(text || "");
+            if (fromText) return fromText;
+
+            const visibleHtmlText = stripHtmlToText(html || "");
+            const fromHtml = extractFromOneText(visibleHtmlText);
+            if (fromHtml) return fromHtml;
+
             return null;
         }
 
@@ -591,4 +788,3 @@
     </script>
 </body>
 </html>
-
